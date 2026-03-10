@@ -83,4 +83,63 @@ async def gestionar_contenido(update: Update, context: ContextTypes.DEFAULT_TYPE
             emoji = "📸"
         else:
             file = await (update.message.video or update.message.animation).get_file()
-            format_
+            format_type = "video"
+            emoji = "🎬"
+
+        path = f"file_{user_id}"
+        await file.download_to_drive(path)
+
+        with open(path, 'rb') as s_file:
+            new_s = InputSticker(sticker=s_file, emoji_list=[emoji])
+            try:
+                await context.bot.add_sticker_to_set(user_id=user_id, name=nombre_pack, sticker=new_s)
+            except Exception:
+                await context.bot.create_new_sticker_set(
+                    user_id=user_id, name=nombre_pack, title=pack_data['titulo'], 
+                    stickers=[new_s], sticker_format=format_type
+                )
+
+        await status.edit_text(f"✅ ¡Añadido! Mira tu pack aquí:\nhttps://t.me/addstickers/{nombre_pack}")
+        if os.path.exists(path): os.remove(path)
+    except Exception as e:
+        logging.error(e)
+        await status.edit_text("❌ Error: Asegúrate de que el video sea corto o envía un sticker.")
+
+async def purgar_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    pack_data = packs_col.find_one({"user_id": user_id}, sort=[('_id', -1)])
+    if not pack_data: return
+
+    try:
+        sticker_set = await context.bot.get_sticker_set(pack_data['nombre_url'])
+        if sticker_set.stickers:
+            await context.bot.delete_sticker_from_set(sticker_set.stickers[-1].file_id)
+            await update.message.reply_text("🗑 Último sticker borrado.")
+    except Exception:
+        await update.message.reply_text("❌ No se pudo borrar nada.")
+
+async def ver_mis_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    mis_packs = packs_col.find({"user_id": update.effective_user.id})
+    lista = [f"• {p['titulo']}: https://t.me/addstickers/{p['nombre_url']}" for p in mis_packs]
+    texto = "📦 **Tus Paquetes:**\n\n" + "\n".join(lista) if lista else "No tienes packs."
+    await query.edit_message_text(texto, parse_mode='Markdown')
+
+def main():
+    threading.Thread(target=run_health_check, daemon=True).start()
+    app = Application.builder().token(TOKEN).build()
+    conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(iniciar_creacion, pattern='crear_pack')],
+        states={TITULO: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_titulo)], 
+                URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, crear_pack_url)]},
+        fallbacks=[]
+    )
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("purgar", purgar_sticker))
+    app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(ver_mis_packs, pattern='ver_packs'))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.Sticker.ALL, gestionar_contenido))
+    app.run_polling()
+
+if __name__ == '__main__': main()
