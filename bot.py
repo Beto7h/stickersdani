@@ -79,6 +79,7 @@ async def crear_pack_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- GESTIÓN DE CONTENIDO (Añadir a Pack) ---
 async def gestionar_contenido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    # Buscamos el pack más reciente del usuario
     pack_data = packs_col.find_one({"user_id": user_id}, sort=[('_id', -1)])
     
     if not pack_data:
@@ -119,7 +120,9 @@ async def gestionar_contenido(update: Update, context: ContextTypes.DEFAULT_TYPE
         await status.edit_text(f"✅ ¡Añadido! Mira tu pack aquí:\nhttps://t.me/addstickers/{nombre_pack}")
         if os.path.exists(path): os.remove(path)
     except Exception as e:
-        await status.edit_text("❌ Error: Asegúrate de enviar stickers válidos.")
+        # Mejora: Ahora te dice el error real para poder arreglarlo
+        logging.error(f"Error en gestionar_contenido: {e}")
+        await status.edit_text(f"❌ Error técnico: {str(e)}")
 
 # --- COMANDOS EXTRA ---
 async def purgar_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -131,16 +134,26 @@ async def purgar_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if s_set.stickers:
             await context.bot.delete_sticker_from_set(s_set.stickers[-1].file_id)
             await update.message.reply_text("🗑 Último sticker borrado.")
-    except Exception:
-        await update.message.reply_text("❌ No se pudo borrar.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ No se pudo borrar: {str(e)}")
 
 async def ver_mis_packs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # 1. Avisar a Telegram que recibimos el toque (quita el relojito del botón)
     await query.answer()
-    mis_packs = packs_col.find({"user_id": update.effective_user.id})
-    lista = [f"• {p['titulo']}: https://t.me/addstickers/{p['nombre_url']}" for p in mis_packs]
-    texto = "📦 **Tus Paquetes:**\n\n" + "\n".join(lista) if lista else "No tienes packs registrados."
-    await query.edit_message_text(texto, parse_mode='Markdown')
+    
+    user_id = update.effective_user.id
+    # 2. Buscar packs en la DB
+    mis_packs = list(packs_col.find({"user_id": user_id}))
+    
+    if mis_packs:
+        lista = [f"• **{p['titulo']}**\n  🔗 https://t.me/addstickers/{p['nombre_url']}" for p in mis_packs]
+        texto = "📦 **Tus Paquetes Registrados:**\n\n" + "\n\n".join(lista)
+    else:
+        texto = "⚠️ No tienes packs registrados todavía."
+    
+    # 3. Editar el mensaje para mostrar la lista
+    await query.edit_message_text(texto, parse_mode='Markdown', disable_web_page_preview=True)
 
 # --- INICIO ---
 def main():
@@ -148,7 +161,7 @@ def main():
     app = Application.builder().token(TOKEN).build()
     
     conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(iniciar_creacion, pattern='crear_pack')],
+        entry_points=[CallbackQueryHandler(iniciar_creacion, pattern='^crear_pack$')],
         states={
             TITULO: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_titulo)], 
             URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, crear_pack_url)]
@@ -159,10 +172,10 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("purgar", purgar_sticker))
     app.add_handler(conv)
-    app.add_handler(CallbackQueryHandler(ver_mis_packs, pattern='ver_packs'))
+    app.add_handler(CallbackQueryHandler(ver_mis_packs, pattern='^ver_packs$'))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.Sticker.ALL, gestionar_contenido))
     
-    # drop_pending_updates=True para evitar el error de "Conflict"
+    # Limpia mensajes viejos al arrancar para evitar el error de Conflict
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
