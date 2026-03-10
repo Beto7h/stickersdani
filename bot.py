@@ -151,5 +151,32 @@ async def purgar_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 3. INICIO ---
 def main():
+    # Iniciar el servidor de salud para que Koyeb no de error
     threading.Thread(target=run_health_check, daemon=True).start()
-    app = Application.
+    
+    # Crear la aplicación del bot
+    app = Application.builder().token(TOKEN).build()
+    
+    # Configurar el gestor de conversaciones para crear packs
+    conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(iniciar_creacion, pattern='^crear_pack$')],
+        states={
+            TITULO: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_titulo)], 
+            URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, crear_pack_url)]
+        },
+        fallbacks=[CommandHandler("start", start)]
+    )
+
+    # Añadir todos los manejadores (Handlers)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("purgar", purgar_sticker))
+    app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(ver_mis_packs, pattern='^ver_packs$'))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.Sticker.ALL, gestionar_contenido))
+    
+    # Arrancar el bot y limpiar mensajes acumulados
+    print("Bot dmxsticker_bot en línea...")
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == '__main__':
+    main()
