@@ -14,7 +14,6 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot dmxsticker_bot activo")
 
 def run_health_check():
-    # Koyeb asigna el puerto automáticamente, generalmente el 8080
     port = int(os.getenv("PORT", 8080))
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     server.serve_forever()
@@ -36,9 +35,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "¿Qué deseas hacer hoy?\n\n"
         "🙏 _Agradecimiento especial a mi creador:_ @danielhs7"
     )
+    # CORRECCIÓN AQUÍ: Se usa callback_data, no callback_query_data
     keyboard = [
-        [InlineKeyboardButton("📦 Mis Paquetes", callback_query_data='ver_packs')],
-        [InlineKeyboardButton("➕ Crear Nuevo Pack", callback_query_data='crear_pack')]
+        [InlineKeyboardButton("📦 Mis Paquetes", callback_data='ver_packs')],
+        [InlineKeyboardButton("➕ Crear Nuevo Pack", callback_data='crear_pack')]
     ]
     await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -81,10 +81,8 @@ async def procesar_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not TOKEN:
-        print("ERROR: No se encontró la variable TELEGRAM_TOKEN")
         return
 
-    # Iniciar el servidor de salud en un hilo aparte para no bloquear el bot
     threading.Thread(target=run_health_check, daemon=True).start()
 
     app = Application.builder().token(TOKEN).build()
@@ -100,9 +98,8 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(MessageHandler(filters.VIDEO | filters.ANIMATION, procesar_video))
 
-    print("Bot @dmxsticker_bot iniciado con Health Check...")
+    print("Bot @dmxsticker_bot iniciado...")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
-    
