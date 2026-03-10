@@ -76,7 +76,6 @@ async def recibir_titulo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def crear_pack_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre_raw = update.message.text.strip().replace(" ", "_").lower()
     user_id = update.effective_user.id
-    # El enlace siempre termina con by @dmxsticker_bot
     nombre_full = f"{nombre_raw}_by_{context.bot.username}"
     
     packs_col.update_one(
@@ -118,17 +117,17 @@ async def gestionar_contenido(update: Update, context: ContextTypes.DEFAULT_TYPE
         await file.download_to_drive(path)
         
         with open(path, 'rb') as f:
-            # CORRECCIÓN AQUÍ: Se añade el argumento 'format'
             si = InputSticker(sticker=f, emoji_list=[emoji], format=fmt)
             try:
                 await context.bot.add_sticker_to_set(user_id=user_id, name=pack_data['nombre_url'], sticker=si)
             except Exception:
+                # CORRECCIÓN: Usamos 'format' en lugar de 'sticker_format'
                 await context.bot.create_new_sticker_set(
                     user_id=user_id, 
                     name=pack_data['nombre_url'], 
                     title=pack_data['titulo'], 
                     stickers=[si], 
-                    sticker_format=fmt
+                    format=fmt 
                 )
                 
         await status.edit_text(f"✅ ¡Añadido!\nhttps://t.me/addstickers/{pack_data['nombre_url']}")
@@ -151,13 +150,10 @@ async def purgar_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 3. INICIO ---
 def main():
-    # Iniciar el servidor de salud para que Koyeb no de error
     threading.Thread(target=run_health_check, daemon=True).start()
     
-    # Crear la aplicación del bot
     app = Application.builder().token(TOKEN).build()
     
-    # Configurar el gestor de conversaciones para crear packs
     conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(iniciar_creacion, pattern='^crear_pack$')],
         states={
@@ -167,14 +163,12 @@ def main():
         fallbacks=[CommandHandler("start", start)]
     )
 
-    # Añadir todos los manejadores (Handlers)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("purgar", purgar_sticker))
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(ver_mis_packs, pattern='^ver_packs$'))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.Sticker.ALL, gestionar_contenido))
     
-    # Arrancar el bot y limpiar mensajes acumulados
     print("Bot dmxsticker_bot en línea...")
     app.run_polling(drop_pending_updates=True)
 
